@@ -1,0 +1,64 @@
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+
+const char* ssid = "your_SSID";
+const char* password = "your_PASSWORD";
+
+const int pulsePin = 4; // GPIO pin where the sensor is connected
+volatile unsigned long pulseCount = 0;
+unsigned long lastTime = 0;
+unsigned int rpm = 0;
+unsigned long interval = 5000; // 5 seconds interval to calculate RPM
+
+AsyncWebServer server(80); // Create an instance of AsyncWebServer on port 80
+
+void IRAM_ATTR handlePulse() {
+  pulseCount++;
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(pulsePin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(pulsePin), handlePulse, FALLING);
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/html", getHtmlPage());
+  });
+
+  server.begin();
+}
+
+void loop() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastTime >= interval) {
+    noInterrupts();
+    unsigned long count = pulseCount;
+    pulseCount = 0;
+    interrupts();
+    
+    rpm = (count / 12) * (60000 / interval); // Calculate RPM
+    
+    Serial.print("Pulse Count: ");
+    Serial.println(count);
+    Serial.print("RPM: ");
+    Serial.println(rpm);
+    
+    lastTime = currentTime;
+  }
+}
+
+String getHtmlPage() {
+  String html = "<!DOCTYPE html><html><head><title>ESP32 Pulse Count and RPM</title></head><body>";
+  html += "<h1>ESP32 Pulse Count and RPM</h1>";
+  html += "<p>Pulse Count: " + String(pulseCount) + "</p>";
+  html += "<p>RPM: " + String(rpm) + "</p>";
+  html += "</body></html>";
+  return html;
+}
